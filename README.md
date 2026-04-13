@@ -28,8 +28,8 @@ Add the following to your `claude_desktop_config.json`:
     "om-studio": {
       "command": "uvx",
       "args": [
-        "--from", "git+https://github.com/YOUR_USERNAME/om-studio-mcp.git",
-        "om-studio",
+        "--from", "git+https://github.com/CoderRahul01/om-studio-mcp.git",
+        "om-studio-mcp",
         "--url", "https://your-openmetadata-url",
         "--token", "your-jwt-token"
       ]
@@ -49,7 +49,7 @@ If you want to contribute or run locally:
 
 ```bash
 # Clone and install
-git clone https://github.com/YOUR_USERNAME/om-studio-mcp.git
+git clone https://github.com/CoderRahul01/om-studio-mcp.git
 cd om-studio-mcp
 uv sync
 
