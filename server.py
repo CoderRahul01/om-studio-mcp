@@ -63,7 +63,8 @@ def check_connection() -> str:
     """Health check tool to verify the connection to the OpenMetadata server."""
     om = get_om_client()
     try:
-        version = om.get_server_version()
+        raw_version = om.get_server_version()
+        version = safeguard_data(raw_version)
         return json.dumps({"status": "healthy", "version": version}, indent=2)
     except Exception as e:
         return json.dumps({"status": "degraded", "error": str(e)}, indent=2)
