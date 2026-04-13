@@ -1,0 +1,29 @@
+[project]
+name = "om-studio-mcp"
+version = "0.1.0"
+description = "Enterprise Metadata Governance MCP Server for OpenMetadata"
+authors = [
+    { name = "Rahul Pandey", email = "rahulpandey187@example.com" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.13"
+keywords = ["mcp", "openmetadata", "governance", "data-catalog", "ai-agent"]
+dependencies = [
+    "antlr4-python3-runtime>=4.9.2",
+    "cachetools>=7.0.5",
+    "mcp[cli]>=1.27.0",
+    "openmetadata-ingestion>=1.12.5.1",
+    "python-dotenv>=1.2.2",
+    "requests>=2.32.3",
+]
+
+[project.scripts]
+om-studio = "server:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["server"]
