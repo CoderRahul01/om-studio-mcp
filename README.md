@@ -59,9 +59,30 @@ uv run om-studio --url http://localhost:8585 --token <your_token>
 
 ---
 
+## 🛠️ Troubleshooting & FAQ
+
+### 1. "An executable named om-studio-mcp is not provided"
+This happens if you try to run the package name instead of the command.
+- **Fix**: Ensure your `args` in the config uses `om-studio` (the command) after the `--from` git URL (the package).
+
+### 2. "Failed to resolve --with requirement"
+This usually means the GitHub URL is incorrect or the repository is private/non-existent.
+- **Fix**: Double-check that your URL points to `https://github.com/CoderRahul01/om-studio-mcp.git`.
+
+### 3. Connection timeouts (60s errors)
+OM-Studio uses **Lazy Loading** to prevent this. If you still see it:
+- **Fix**: Check your `mcp_debug.log`. Ensure your OpenMetadata instance is reachable and not behind a slow VPN.
+
+### 4. Authentication Errors (401/403)
+- **Fix**: Verify your `OM_JWT` has "Ingestion Bot" or "Admin" permissions in OpenMetadata.
+
+---
+
 ## 🏛️ Architecture
 
-OM-Studio uses **Lazy Loading** for its internal `openmetadata-ingestion` libraries. This ensures the MCP handshake completes in `< 2 seconds`, bypassing the common 60-second initialization timeout in AI clients.
+OM-Studio is optimized for **speed and stability**:
+- **Lazy Loading**: Heavy metadata libraries are only loaded when a tool is called, ensuring the initial handshake happens in `< 2 seconds`.
+- **Extreme Safeguarding**: Recursively handles `requests.Response` objects to prevent runtime crashes.
 
 ## 📄 License
 MIT © Rahul Pandey
