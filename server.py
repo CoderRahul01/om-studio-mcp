@@ -2,9 +2,10 @@ import os
 import json
 import sys
 import argparse
+import requests
 from pathlib import Path
 
-# --- BOOTSTRAP: Version 2.0 Diagnostics ---
+# --- BOOTSTRAP: Version 2.1 Diagnostics ---
 BASE_DIR = Path(__file__).parent.absolute()
 os.chdir(BASE_DIR)
 sys.stderr = sys.__stderr__
@@ -24,7 +25,7 @@ from mcp.server.fastmcp import FastMCP
 load_dotenv(BASE_DIR / ".env")
 mcp = FastMCP("om-studio")
 
-# Global Config Storage (for CLI overrides)
+# Global Config Storage
 CONFIG = {
     "url": os.getenv("OM_URL", "http://localhost:8585"),
     "token": os.getenv("OM_JWT", "")
@@ -47,79 +48,107 @@ def get_om_client():
 
 def safeguard_data(obj):
     """Extreme safeguard against 'Response' or Pydantic type mismatches."""
+    # 1. Handle raw requests.Response objects
     if hasattr(obj, 'json') and callable(obj.json):
         try:
             return obj.json()
         except:
-            return {"error": "Failed to parse Response JSON"}
+            return {"error": "Failed to parse Response JSON", "text": getattr(obj, 'text', '')[:200]}
+    
+    # 2. Handle Pydantic V2 models
     if hasattr(obj, 'model_dump') and callable(obj.model_dump):
         return obj.model_dump()
+    
+    # 3. Handle Pydantic V1 models
     if hasattr(obj, 'dict') and callable(obj.dict):
         return obj.dict()
-    return obj
+    
+    # 4. Handle standard list/dict
+    if isinstance(obj, (dict, list)):
+        return obj
+        
+    # 5. Fallback for primitive types or unknowns
+    return str(obj)
 
 @mcp.tool()
 def check_connection() -> str:
     """Health check tool to verify the connection to the OpenMetadata server."""
-    om = get_om_client()
     try:
-        raw_version = om.get_server_version()
-        version = safeguard_data(raw_version)
-        return json.dumps({"status": "healthy", "version": version}, indent=2)
+        # BYPASS SDK: Direct REST call avoids internal SDK subscripting bugs
+        headers = {
+            "Authorization": f"Bearer {CONFIG['token']}",
+            "Content-Type": "application/json"
+        }
+        url = f"{CONFIG['url'].rstrip('/')}/api/v1/system/version"
+        resp = requests.get(url, headers=headers, timeout=10)
+        
+        if resp.status_code == 200:
+            data = safeguard_data(resp)
+            return json.dumps({
+                "status": "healthy", 
+                "version": data,
+                "mcp_version": "2.1-HARDENED"
+            }, indent=2)
+        else:
+            return json.dumps({
+                "status": "degraded", 
+                "code": resp.status_code,
+                "message": resp.text[:200]
+            }, indent=2)
+            
     except Exception as e:
-        return json.dumps({"status": "degraded", "error": str(e)}, indent=2)
+        return json.dumps({"status": "error", "error": str(e)}, indent=2)
 
 @mcp.tool()
 def analyze_impact(table_fqn: str) -> str:
-    """Performs a blast-radius analysis for a table in OpenMetadata.
-    Args:
-        table_fqn: The fully qualified name.
-    """
+    """Performs a blast-radius analysis (lineage) for a table."""
     from metadata.generated.schema.entity.data.table import Table
     om = get_om_client()
     try:
         lineage = om.get_lineage_by_name(entity=Table, fqn=table_fqn)
         data = safeguard_data(lineage)
-        edges = data.get('edges', []) if isinstance(data, dict) else []
-        return json.dumps(edges, indent=2)
+        
+        # Safe extraction
+        if isinstance(data, dict):
+            return json.dumps(data.get('edges', []), indent=2)
+        return json.dumps(data, indent=2)
     except Exception as e:
-        return f"Tool Error: {e}"
+        return f"Lineage Error: {e}"
 
 @mcp.tool()
 def discover_data(query: str) -> str:
-    """Search for tables by name or description in OpenMetadata.
-    Args:
-        query: Search keywords.
-    """
+    """Search for tables by name or description."""
     from metadata.generated.schema.entity.data.table import Table
     om = get_om_client()
     try:
-        results = om.list_entities(entity=Table, limit=5)
+        results = om.list_entities(entity=Table, limit=10)
         data = safeguard_data(results)
-        entities = data.get('entities', []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        
+        entities = []
+        if isinstance(data, dict):
+            entities = data.get('entities', [])
+        elif isinstance(data, list):
+            entities = data
+            
         return json.dumps([{"name": r.get('name') if isinstance(r, dict) else getattr(r, 'name', 'unknown'), 
                             "fqn": r.get('fullyQualifiedName') if isinstance(r, dict) else getattr(r, 'fullyQualifiedName', 'unknown')} 
                            for r in entities], indent=2)
     except Exception as e:
-        return f"Tool Error: {e}"
+        return f"Discovery Error: {e}"
 
 @mcp.tool()
 def get_ui_context(table_fqn: str) -> str:
-    """Fetches schema, tags, and metrics for a table.
-    Args:
-        table_fqn: The fully qualified name.
-    """
+    """Fetches full schema, tags, and metadata for a table."""
     from metadata.generated.schema.entity.data.table import Table
     om = get_om_client()
     try:
         table = om.get_by_name(entity=Table, fqn=table_fqn, fields=["columns", "tags"])
         if not table: return "Table not found."
-        if hasattr(table, 'model_dump_json') and callable(table.model_dump_json):
-            return table.model_dump_json()
+        
         data = safeguard_data(table)
         return json.dumps(data, indent=2)
     except Exception as e:
-        return f"Tool Error: {e}"
+        return f"Context Error: {e}"
 
 def main():
     parser = argparse.ArgumentParser(description="OM-Studio MCP Server")
@@ -127,13 +156,10 @@ def main():
     parser.add_argument("--token", default=CONFIG["token"], help="OpenMetadata JWT Token")
     args = parser.parse_args()
 
-    # Update global config with overrides
     CONFIG["url"] = args.url
     CONFIG["token"] = args.token
 
-    debug_log(f"🚀 VERIFIED VERSION: 2.0 - SAFEGUARDED (Public Distribution Ready)")
-    debug_log(f"🔗 Target: {CONFIG['url']}")
-    
+    debug_log(f"🚀 VERIFIED VERSION: 2.1 - HARDENED")
     mcp.run(transport="stdio")
 
 if __name__ == "__main__":
